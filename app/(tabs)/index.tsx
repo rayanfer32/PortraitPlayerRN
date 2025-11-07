@@ -14,10 +14,15 @@ export default function App() {
 
   const [tilt, setTilt] = useState({ x: 0, y: 1 });
   const translateX = useSharedValue(0);
-  const translateY = useSharedValue(0);
+  const scale = useSharedValue(1);
+  const yRest = useSharedValue(0);
   const [videoUri, setVideoUri] = useState<string | null>(null);
 
   const [isPlaying, setIsPlaying] = useState(false);
+
+  const setRestPosition = () => {
+    yRest.value = -tilt.y; // Negate current tilt to offset it
+  };
 
   const pickVideo = async () => {
     try {
@@ -39,26 +44,28 @@ export default function App() {
       // Clamp values between -5 and 5
       setTilt({ x: x, y: y });
 
-      // Map tilt range (-5 to 5) to ±80 px translation
+      // Map tilt range (-5 to 5) to horizontal translation
       translateX.value = withSpring(x * 500, {
         damping: 20,
         stiffness: 30,
         mass: 1,
       });
 
-      translateY.value = withSpring(y * -50, {
+      // Map Y tilt to scale (zoom) between 0.8 and 1.2
+      const targetScale = 1 + ((y + yRest.value) * 1); // y is negative when tilting forward
+      scale.value = withSpring(targetScale, {
         damping: 20,
         stiffness: 30,
       });
     });
 
     return () => subscription && subscription.remove();
-  }, [translateX, translateY]);
+  }, [translateX, scale, yRest]);
 
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [
       { translateX: translateX.value },
-      { translateY: translateY.value },
+      { scale: scale.value },
     ],
   }));
 
@@ -106,10 +113,18 @@ export default function App() {
         >
           <Text style={styles.buttonText}>Pick Video</Text>
         </TouchableOpacity>
+        
+        <TouchableOpacity
+          style={styles.button}
+          onPress={setRestPosition}
+        >
+          <Text style={styles.buttonText}>Set Rest</Text>
+        </TouchableOpacity>
       </View>
 
       <Text style={styles.debug}>
         Tilt X: {tilt.x.toFixed(2)} Tilt Y: {tilt.y.toFixed(2)}
+        Rest Y: {(-yRest.value).toFixed(2)}
       </Text>
     </View>
   );
