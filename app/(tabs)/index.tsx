@@ -1,98 +1,160 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
+import { ResizeMode, Video } from "expo-av";
+import * as DocumentPicker from 'expo-document-picker';
+import { Accelerometer } from "expo-sensors";
+import { useEffect, useRef, useState } from "react";
+import { StyleSheet, Text, TextStyle, TouchableOpacity, View, ViewStyle } from "react-native";
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+} from "react-native-reanimated";
 
-import { HelloWave } from '@/components/hello-wave';
-import ParallaxScrollView from '@/components/parallax-scroll-view';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Link } from 'expo-router';
+export default function App() {
+  const videoRef = useRef<Video>(null);
 
-export default function HomeScreen() {
+  const [tilt, setTilt] = useState({ x: 0, y: 1 });
+  const translateX = useSharedValue(0);
+  const translateY = useSharedValue(0);
+  const [videoUri, setVideoUri] = useState<string | null>(null);
+
+  const [isPlaying, setIsPlaying] = useState(false);
+
+  const pickVideo = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: 'video/*',
+      });
+
+      if (result.assets && result.assets.length > 0) {
+        setVideoUri(result.assets[0].uri);
+      }
+    } catch (err) {
+      console.warn('Error picking video:', err);
+    }
+  };
+
+  useEffect(() => {
+    Accelerometer.setUpdateInterval(50); // update every 50 ms
+    const subscription = Accelerometer.addListener(({ x, y }) => {
+      // Clamp values between -5 and 5
+      setTilt({ x: x, y: y });
+
+      // Map tilt range (-5 to 5) to ±80 px translation
+      translateX.value = withSpring(x * 500, {
+        damping: 20,
+        stiffness: 30,
+        mass: 1,
+      });
+
+      translateY.value = withSpring(y * -50, {
+        damping: 20,
+        stiffness: 30,
+      });
+    });
+
+    return () => subscription && subscription.remove();
+  }, [translateX, translateY]);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateX: translateX.value },
+      { translateY: translateY.value },
+    ],
+  }));
+
   return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
+    <View style={styles.container}>
+      <Animated.View style={[styles.videoWrapper, animatedStyle]}>
+        <Video
+          ref={videoRef}
+          source={
+            videoUri
+              ? { uri: videoUri }
+              : { uri: "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/SubaruOutbackOnStreetAndDirt.mp4" }
+          }
+          style={styles.video}
+          resizeMode={ResizeMode.CONTAIN}
+          isLooping
+          shouldPlay
+          onPlaybackStatusUpdate={(status: any) => {
+            setIsPlaying(status?.isPlaying || false);
+          }}
         />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({
-              ios: 'cmd + d',
-              android: 'cmd + m',
-              web: 'F12',
-            })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <Link href="/modal">
-          <Link.Trigger>
-            <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-          </Link.Trigger>
-          <Link.Preview />
-          <Link.Menu>
-            <Link.MenuAction title="Action" icon="cube" onPress={() => alert('Action pressed')} />
-            <Link.MenuAction
-              title="Share"
-              icon="square.and.arrow.up"
-              onPress={() => alert('Share pressed')}
-            />
-            <Link.Menu title="More" icon="ellipsis">
-              <Link.MenuAction
-                title="Delete"
-                icon="trash"
-                destructive
-                onPress={() => alert('Delete pressed')}
-              />
-            </Link.Menu>
-          </Link.Menu>
-        </Link>
+      </Animated.View>
 
-        <ThemedText>
-          {`Tap the Explore tab to learn more about what's included in this starter app.`}
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          {`When you're ready, run `}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
+      <View style={styles.buttonContainer}>
+        <TouchableOpacity
+          style={styles.button}
+          onPress={async () => {
+            if (videoRef.current) {
+              if (isPlaying) {
+                await videoRef.current.pauseAsync();
+              } else {
+                await videoRef.current.playAsync();
+              }
+            }
+          }}
+        >
+          <Text style={styles.buttonText}>
+            {isPlaying ? "Pause" : "Play"}
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.button}
+          onPress={pickVideo}
+        >
+          <Text style={styles.buttonText}>Pick Video</Text>
+        </TouchableOpacity>
+      </View>
+
+      <Text style={styles.debug}>
+        Tilt X: {tilt.x.toFixed(2)} Tilt Y: {tilt.y.toFixed(2)}
+      </Text>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  titleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  stepContainer: {
-    gap: 8,
-    marginBottom: 8,
-  },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
+  container: {
+    flex: 1,
+    backgroundColor: "#000",
+    justifyContent: "center",
+    alignItems: "center",
+  } as ViewStyle,
+  videoWrapper: {
+    width: "100%",
+    height: "100%",
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#000",
+    overflow: "visible",
+  } as ViewStyle,
+  video: {
+    width: "180%",
+    aspectRatio: 16 / 9,
+  } as ViewStyle,
+  buttonContainer: {
     position: 'absolute',
-  },
+    bottom: 40,
+    flexDirection: 'row',
+    gap: 20,
+    zIndex: 1,
+  } as ViewStyle,
+  button: {
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    padding: 10,
+    borderRadius: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 24,
+  } as ViewStyle,
+  buttonText: {
+    color: "#fff",
+    fontSize: 16,
+  } as TextStyle,
+  debug: {
+    position: 'absolute',
+    top: 40,
+    color: '#fff',
+  } as TextStyle,
 });
