@@ -1,3 +1,4 @@
+import Slider from '@react-native-community/slider';
 import { ResizeMode, Video } from "expo-av";
 import * as DocumentPicker from 'expo-document-picker';
 import { Accelerometer } from "expo-sensors";
@@ -6,7 +7,7 @@ import { StyleSheet, Text, TextStyle, TouchableOpacity, View, ViewStyle } from "
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
-  withSpring,
+  withSpring
 } from "react-native-reanimated";
 
 export default function App() {
@@ -19,9 +20,23 @@ export default function App() {
   const [videoUri, setVideoUri] = useState<string | null>(null);
 
   const [isPlaying, setIsPlaying] = useState(false);
+  const [position, setPosition] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [isSeeking, setIsSeeking] = useState(false);
 
+  const [restValue, setRestValue] = useState(0);
+  
   const setRestPosition = () => {
-    yRest.value = -tilt.y; // Negate current tilt to offset it
+    const newRestValue = -tilt.y;
+    yRest.value = newRestValue; // Negate current tilt to offset it
+    setRestValue(newRestValue);
+  };
+
+  const formatTime = (milliseconds: number) => {
+    const totalSeconds = Math.floor(milliseconds / 1000);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
   };
 
   const pickVideo = async () => {
@@ -85,6 +100,10 @@ export default function App() {
           shouldPlay
           onPlaybackStatusUpdate={(status: any) => {
             setIsPlaying(status?.isPlaying || false);
+            if (!isSeeking && status?.isLoaded) {
+              setPosition(status.positionMillis || 0);
+              setDuration(status.durationMillis || 0);
+            }
           }}
         />
       </Animated.View>
@@ -122,10 +141,34 @@ export default function App() {
         </TouchableOpacity>
       </View>
 
-      <Text style={styles.debug}>
+      <View style={styles.sliderContainer}>
+        <Slider
+          style={styles.slider}
+          value={position}
+          maximumValue={duration}
+          minimumValue={0}
+          onSlidingStart={() => {
+            setIsSeeking(true);
+          }}
+          onSlidingComplete={async (value) => {
+            setIsSeeking(false);
+            if (videoRef.current) {
+              await videoRef.current.setPositionAsync(value);
+            }
+          }}
+          minimumTrackTintColor="#FFFFFF"
+          maximumTrackTintColor="#666666"
+          thumbTintColor="#FFFFFF"
+        />
+        <Text style={styles.timeText}>
+          {formatTime(position)} / {formatTime(duration)}
+        </Text>
+      </View>
+
+      <Animated.Text style={styles.debug}>
         Tilt X: {tilt.x.toFixed(2)} Tilt Y: {tilt.y.toFixed(2)}
-        Rest Y: {(-yRest.value).toFixed(2)}
-      </Text>
+        Rest Y: {(-restValue).toFixed(2)}
+      </Animated.Text>
     </View>
   );
 }
@@ -151,7 +194,7 @@ const styles = StyleSheet.create({
   } as ViewStyle,
   buttonContainer: {
     position: 'absolute',
-    bottom: 40,
+    bottom: 90,
     flexDirection: 'row',
     gap: 20,
     zIndex: 1,
@@ -166,6 +209,23 @@ const styles = StyleSheet.create({
   buttonText: {
     color: "#fff",
     fontSize: 16,
+  } as TextStyle,
+  sliderContainer: {
+  
+    position: 'absolute',
+    bottom: 20,
+    width: '100%',
+    paddingHorizontal: 20,
+    alignItems: 'center',
+  } as ViewStyle,
+  slider: {
+    width: '100%',
+    height: 40,
+  } as ViewStyle,
+  timeText: {
+    color: '#fff',
+    fontSize: 12,
+    marginTop: 5,
   } as TextStyle,
   debug: {
     position: 'absolute',
