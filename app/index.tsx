@@ -1,13 +1,23 @@
-import Slider from '@react-native-community/slider';
+import Slider from "@react-native-community/slider";
 import { ResizeMode, Video } from "expo-av";
-import * as DocumentPicker from 'expo-document-picker';
+import * as DocumentPicker from "expo-document-picker";
 import { Accelerometer } from "expo-sensors";
 import { useEffect, useRef, useState } from "react";
-import { StyleSheet, Text, TextStyle, TouchableOpacity, View, ViewStyle } from "react-native";
+import {
+  GestureResponderEvent,
+  PanResponder,
+  PanResponderGestureState,
+  StyleSheet,
+  Text,
+  TextStyle,
+  TouchableOpacity,
+  View,
+  ViewStyle,
+} from "react-native";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
-  withSpring
+  withSpring,
 } from "react-native-reanimated";
 
 export default function App() {
@@ -18,6 +28,24 @@ export default function App() {
   const scale = useSharedValue(1);
   const yRest = useSharedValue(0);
   const [videoUri, setVideoUri] = useState<string | null>(null);
+  
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onPanResponderMove: (event: GestureResponderEvent, gestureState: PanResponderGestureState) => {
+        // Calculate new scale based on vertical movement
+        // Move up to zoom in, move down to zoom out
+        const newScale = 1 + (-gestureState.dy / 200); // Adjust divisor to control zoom sensitivity
+        scale.value = withSpring(Math.max(0.5, Math.min(3, newScale)), {
+          damping: 20,
+          stiffness: 30,
+        });
+      },
+      onPanResponderRelease: () => {
+        // Optional: Add behavior when touch is released
+      },
+    })
+  ).current;
 
   const [isPlaying, setIsPlaying] = useState(false);
   const [position, setPosition] = useState(0);
@@ -25,7 +53,7 @@ export default function App() {
   const [isSeeking, setIsSeeking] = useState(false);
 
   const [restValue, setRestValue] = useState(0);
-  
+
   const setRestPosition = () => {
     const newRestValue = -tilt.y;
     yRest.value = newRestValue; // Negate current tilt to offset it
@@ -36,20 +64,20 @@ export default function App() {
     const totalSeconds = Math.floor(milliseconds / 1000);
     const minutes = Math.floor(totalSeconds / 60);
     const seconds = totalSeconds % 60;
-    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+    return `${minutes}:${seconds.toString().padStart(2, "0")}`;
   };
 
   const pickVideo = async () => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
-        type: 'video/*',
+        type: "video/*",
       });
 
       if (result.assets && result.assets.length > 0) {
         setVideoUri(result.assets[0].uri);
       }
     } catch (err) {
-      console.warn('Error picking video:', err);
+      console.warn("Error picking video:", err);
     }
   };
 
@@ -66,33 +94,31 @@ export default function App() {
         mass: 1,
       });
 
-      // Map Y tilt to scale (zoom) between 0.8 and 1.2
-      const targetScale = 1 + ((y + yRest.value) * 1); // y is negative when tilting forward
-      scale.value = withSpring(targetScale, {
-        damping: 20,
-        stiffness: 30,
-      });
+      // We're not using tilt for scale anymore since we're using pan gesture
+      // Keep only the horizontal translation from tilt
     });
 
     return () => subscription && subscription.remove();
   }, [translateX, scale, yRest]);
 
   const animatedStyle = useAnimatedStyle(() => ({
-    transform: [
-      { translateX: translateX.value },
-      { scale: scale.value },
-    ],
+    transform: [{ translateX: translateX.value }, { scale: scale.value }],
   }));
 
   return (
     <View style={styles.container}>
-      <Animated.View style={[styles.videoWrapper, animatedStyle]}>
+      <Animated.View 
+        style={[styles.videoWrapper, animatedStyle]} 
+        {...panResponder.panHandlers}
+      >
         <Video
           ref={videoRef}
           source={
             videoUri
               ? { uri: videoUri }
-              : { uri: "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/SubaruOutbackOnStreetAndDirt.mp4" }
+              : {
+                  uri: "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4",
+                }
           }
           style={styles.video}
           resizeMode={ResizeMode.CONTAIN}
@@ -121,22 +147,14 @@ export default function App() {
             }
           }}
         >
-          <Text style={styles.buttonText}>
-            {isPlaying ? "Pause" : "Play"}
-          </Text>
+          <Text style={styles.buttonText}>{isPlaying ? "Pause" : "Play"}</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity
-          style={styles.button}
-          onPress={pickVideo}
-        >
+        <TouchableOpacity style={styles.button} onPress={pickVideo}>
           <Text style={styles.buttonText}>Pick Video</Text>
         </TouchableOpacity>
-        
-        <TouchableOpacity
-          style={styles.button}
-          onPress={setRestPosition}
-        >
+
+        <TouchableOpacity style={styles.button} onPress={setRestPosition}>
           <Text style={styles.buttonText}>Set Rest</Text>
         </TouchableOpacity>
       </View>
@@ -193,14 +211,14 @@ const styles = StyleSheet.create({
     aspectRatio: 16 / 9,
   } as ViewStyle,
   buttonContainer: {
-    position: 'absolute',
+    position: "absolute",
     bottom: 90,
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 20,
     zIndex: 1,
   } as ViewStyle,
   button: {
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    backgroundColor: "rgba(255, 255, 255, 0.2)",
     padding: 10,
     borderRadius: 8,
     paddingVertical: 10,
@@ -211,25 +229,24 @@ const styles = StyleSheet.create({
     fontSize: 16,
   } as TextStyle,
   sliderContainer: {
-  
-    position: 'absolute',
+    position: "absolute",
     bottom: 20,
-    width: '100%',
+    width: "100%",
     paddingHorizontal: 20,
-    alignItems: 'center',
+    alignItems: "center",
   } as ViewStyle,
   slider: {
-    width: '100%',
+    width: "100%",
     height: 40,
   } as ViewStyle,
   timeText: {
-    color: '#fff',
+    color: "#fff",
     fontSize: 12,
     marginTop: 5,
   } as TextStyle,
   debug: {
-    position: 'absolute',
+    position: "absolute",
     top: 40,
-    color: '#fff',
+    color: "#fff",
   } as TextStyle,
 });
